@@ -1,0 +1,68 @@
+#initialize API
+amzn = yf.Ticker("AMZN")
+apple = yf.Ticker("AAPL")
+google = yf.Ticker("GOOGL")
+nvdia = yf.Ticker("NVDA")
+
+#get stock price history
+end_date = datetime.now().strftime('%Y-%m-%d')
+
+amzn_hist = amzn.history(start='2017-01-01',end=end_date)
+apple_hist = apple.history(start='2017-01-01',end=end_date)
+google_hist = google.history(start='2017-01-01',end=end_date)
+nvdia_hist = nvdia.history(start='2017-01-01',end=end_date)
+print(apple_hist)
+print(amzn_hist)
+print(google_hist)
+print(nvdia_hist)
+
+close_amazon_prices = amzn_hist['Close'].values.reshape(-1, 1)
+
+# scaling the data
+scaler = MinMaxScaler(feature_range=(0, 1))
+scaled_prices = scaler.fit_transform(close_amazon_prices)
+
+def create_sequences(data, sequence_length):
+    xs, ys = [], []
+    for i in range(len(data)-sequence_length-1):
+        x = data[i:(i+sequence_length)]
+        y = data[i+sequence_length]
+        xs.append(x)
+        ys.append(y)
+    return np.array(xs), np.array(ys)
+
+SEQUENCE_LENGTH = 1000  # we're using the past 1000 days of prices to predict the next price
+X, y = create_sequences(scaled_prices, SEQUENCE_LENGTH)
+
+#splilt data into testing and trainig
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+#model
+model = Sequential([
+    LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)),
+    LSTM(50, return_sequences=False),
+    Dense(25),
+    Dense(1)
+])
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+#train model
+model.fit(X_train, y_train, batch_size=32, epochs=20, validation_data=(X_test, y_test))
+
+predicted_prices = model.predict(X_test)
+predicted_prices = scaler.inverse_transform(predicted_prices)
+actual_prices = scaler.inverse_transform(y_test)
+
+test_dates = pd.date_range(start="2017-01-02", periods=len(actual_prices))
+
+plt.figure(figsize=(14, 7))
+plt.plot(test_dates, actual_prices, color='blue', label='Actual Prices')
+plt.plot(test_dates, predicted_prices, color='red', linestyle='--', label='Predicted Prices')
+
+plt.title('Stock Price Prediction - Actual vs. Predicted')
+plt.xlabel('Date')
+plt.ylabel('Price')
+plt.legend()
+plt.xticks(rotation=45)
+plt.show()
